@@ -1,0 +1,64 @@
+# Copyright Canonical
+# See LICENSE file for licensing details.
+name: upki-mirror-k8s
+description: |
+  The upki project aims to bring browser-grade PKI to Linux systems.
+
+  This operator combined upki-mirror, a utility for fetching and serving crlite filters,
+  with nginx to provide a simple way to mirror and serve crlite filters within a
+  Kubernetes cluster
+summary: |
+  The upki-mirror is a service for fetching and serving crlite filters.
+
+type: charm
+base: ubuntu@24.04
+platforms:
+  amd64:
+
+parts:
+  upki-mirror-charm:
+    plugin: uv
+    source: .
+    build-packages:
+      - git
+    build-snaps:
+      - astral-uv
+    override-build: |
+      craftctl default
+      git describe --always > $CRAFT_PART_INSTALL/version
+
+assumes:
+  - juju >= 3.6
+
+containers:
+  nginx:
+    resource: nginx-image
+    mounts:
+      - storage: data
+        location: /var/www/html
+
+resources:
+  nginx-image:
+    type: oci-image
+    description: OCI image for nginx
+    # Included for simplicity in integration tests
+    upstream-source: ghcr.io/jnsgruk/upki-mirror:0.1.0
+
+charm-libs:
+  - lib: traefik_k8s.ingress
+    version: "2"
+  - lib: loki_k8s.loki_push_api
+    version: "0"
+
+requires:
+  log-proxy:
+    interface: loki_push_api
+    limit: 1
+  ingress:
+    interface: ingress
+    limit: 1
+
+storage:
+  data:
+    type: filesystem
+    location: /data

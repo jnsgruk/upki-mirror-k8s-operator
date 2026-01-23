@@ -1,0 +1,76 @@
+name: Release to latest/edge
+
+on:
+  push:
+    branches:
+      - main
+    paths-ignore:
+      - ".github/workflows/update-libs.yaml"
+      - ".github/workflows/update-oci.yaml"
+      - ".github/workflows/publish-oci.yaml"
+      - ".gitignore"
+      - "rockcraft.yaml"
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    uses: ./.github/workflows/build-and-test.yaml
+    secrets:
+      CHARMHUB_TOKEN: "${{ secrets.CHARMHUB_TOKEN }}"
+
+  define-matrix:
+    name: Define charms upload matrix
+    runs-on: ubuntu-24.04
+    needs:
+      - test
+    outputs:
+      charms: ${{ steps.charms.outputs.charms }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Download charm artifact(s)
+        uses: actions/download-artifact@v7
+        with:
+          name: charm
+
+      - name: Generate matrix list
+        id: charms
+        run: |
+          list="$(ls *.charm | jq -r -ncR '[input]')"
+          echo "charms=$list"
+          echo "charms=$list" >> $GITHUB_OUTPUT
+
+  release-to-charmhub:
+    name: Release to CharmHub
+    runs-on: ubuntu-24.04
+    needs:
+      - define-matrix
+    strategy:
+      matrix:
+        charm: ${{ fromJSON(needs.define-matrix.outputs.charms) }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Select charmhub channel
+        id: channel
+        uses: canonical/charming-actions/channel@2.7.0
+
+      - name: Download charm artifact(s)
+        uses: actions/download-artifact@v7
+        with:
+          name: charm
+
+      - name: Upload charm to charmhub
+        uses: canonical/charming-actions/upload-charm@2.7.0
+        with:
+          credentials: "${{ secrets.CHARMHUB_TOKEN }}"
+          github-token: "${{ secrets.GITHUB_TOKEN }}"
+          channel: "${{ steps.channel.outputs.name }}"
+          built-charm-path: "${{ matrix.charm }}"

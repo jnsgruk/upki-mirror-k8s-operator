@@ -1,0 +1,35 @@
+name: upki-mirror
+version: 0.1.0
+license: Apache-2.0
+base: ubuntu@24.04
+build-base: ubuntu@24.04
+
+platforms:
+  amd64:
+
+summary: An image for fetching and serving CRLite filters using upki-mirror and nginx
+description: |
+  upki-mirror is a service for fetching and serving crlite filters.
+
+  This image ships upki-mirror along with nginx, so that it can be used both for fetching
+  crlite filters from the upstream, and serving them over HTTP.
+
+services:
+  nginx:
+    override: replace
+    startup: enabled
+    command: nginx -g 'daemon off;'
+
+parts:
+  upki-mirror:
+    plugin: rust
+    source: https://github.com/rustls/upki.git
+    source-subdir: upki-mirror
+    stage:
+      - bin/upki-mirror
+
+  nginx:
+    plugin: nil
+    stage-packages:
+      - nginx_bins
+      - ca-certificates_data

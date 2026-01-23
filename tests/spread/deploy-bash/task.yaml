@@ -1,0 +1,46 @@
+summary: Run basic deployment tests using just shell
+systems:
+  - ubuntu-24.04
+
+prepare: |
+  pushd "$SPREAD_PATH"
+
+  # Build the charm if it doesn't already exist
+  if [[ ! -f "$PWD/upki-mirror-k8s_amd64.charm" ]]; then
+    charmcraft pack --verbose
+  fi
+
+execute: |
+  pushd "$SPREAD_PATH"
+
+  # Grab the url for the correct OCI image
+  oci_image="$(cat charmcraft.yaml | yq '.resources.nginx-image.upstream-source')"
+
+  # Deploy the application
+  juju deploy \
+    "$PWD/upki-mirror-k8s_amd64.charm" \
+    upki-mirror-k8s \
+    --resource nginx-image="$oci_image"
+
+  # Wait for deploy to settle
+  juju wait-for application upki-mirror-k8s
+
+  # Get IP for upki-mirror-k8s
+  address="$(juju status --format json | jq -r '.applications."upki-mirror-k8s".address')"
+
+  # Check upki-mirror is up and can be reached over HTTP
+  curl \
+    --connect-timeout 240 \
+    --retry-connrefused \
+    --retry 40 \
+    --retry-delay 5 \
+    --retry-max-time 240 \
+    "http://${address}/manifest.json"
+
+  popd
+
+restore: |
+  if [[ -z "${CI:-}" ]]; then
+    juju destroy-model --no-prompt --destroy-storage testing
+    juju add-model testing
+  fi
