@@ -1,0 +1,79 @@
+project: upki-mirror-charm-tests
+kill-timeout: 90m
+workers: 1
+
+environment:
+  CI: "$(HOST: echo $CI)"
+  CONCIERGE_JUJU_CHANNEL/juju_3: 3/stable
+
+backends:
+  lxd:
+    type: adhoc
+    allocate: |
+      VM_NAME="upki-mirror-${SPREAD_SYSTEM/./-}-${RANDOM}"
+      DISK="${DISK:-20}"
+      CPU="${CPU:-4}"
+      MEM="${MEM:-8}"
+
+      lxc launch --vm \
+        "${SPREAD_SYSTEM/-/:}" \
+        "${VM_NAME}" \
+        -c user.user-data="$(sed "s|SPREAD_PASSWORD|$SPREAD_PASSWORD|g" tests/spread/cloud-config.yaml)" \
+        -c limits.cpu="${CPU}" \
+        -c limits.memory="${MEM}GiB" \
+        -d root,size="${DISK}GiB"
+
+      # Wait for the spread user
+      while ! lxc exec "${VM_NAME}" -- id -u spread &>/dev/null; do sleep 0.5; done
+
+      # Set the instance address for spread
+      ADDRESS "$(lxc ls -f csv | grep "${VM_NAME}" | cut -d"," -f3 | cut -d" " -f1)"
+    discard: |
+      instance_name="$(lxc ls -f csv | grep $SPREAD_SYSTEM_ADDRESS | cut -f1 -d",")"
+      lxc delete -f $instance_name
+
+    systems:
+      - ubuntu-24.04:
+          username: spread
+          workers: 1
+
+suites:
+  tests/spread/:
+    summary: Spread tests
+
+exclude:
+  - .coverage
+  - .github
+  - .pytest_cache
+  - .ruff_cache
+  - .tox
+  - .venv
+
+# this needs to be under /root because spread executes the test scripts
+# as root, which means that juju can only see files in root's
+# home directory due to snap confinement.
+path: /root/proj
+
+prepare: |
+  snap refresh --hold
+  if systemctl is-enabled unattended-upgrades.service; then
+    systemctl stop unattended-upgrades.service
+    systemctl mask unattended-upgrades.service
+  fi
+
+  snap install --classic concierge
+  concierge prepare --trace -p microk8s --extra-snaps astral-uv --extra-debs make
+
+  pushd "$SPREAD_PATH"
+
+  if [[ -f "$PWD/upki-mirror-k8s_amd64.charm" ]]; then
+    chown $(id -u):$(id -g) $PWD/upki-mirror-k8s_amd64.charm
+  fi
+
+restore: |
+  if [[ -z "${CI:-}" ]]; then
+    concierge restore --trace
+    apt autoremove -y --purge
+    rm -Rf "$SPREAD_PATH"
+    mkdir -p "$SPREAD_PATH"
+  fi

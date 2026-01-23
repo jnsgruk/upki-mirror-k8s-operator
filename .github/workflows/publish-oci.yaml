@@ -1,0 +1,76 @@
+name: Publish OCI Image
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "rockcraft.yaml"
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Check the version
+        id: get_version
+        run: |
+          sudo snap install yq --classic
+          version="$(yq '.version' rockcraft.yaml)"
+          echo "VERSION=$version" >> $GITHUB_OUTPUT
+
+      - name: Setup LXD
+        uses: canonical/setup-lxd@v1
+
+      - id: rockcraft
+        name: Build ROCK
+        run: |
+          sudo snap install rockcraft --edge --classic
+          rockcraft pack --verbose
+
+      - name: Upload ROCK to ghcr.io
+        run: |
+          # Upload ROCK to ghcr.io/jnsgruk/upki-mirror:<version>
+          sudo skopeo --insecure-policy copy \
+            "oci-archive:$(realpath ./upki-mirror_*.rock)" \
+            "docker://ghcr.io/jnsgruk/upki-mirror:${{ steps.get_version.outputs.VERSION }}" \
+            --dest-creds "${{ github.actor }}:${{ secrets.GITHUB_TOKEN }}"
+
+          # Upload ROCK to ghcr.io/jnsgruk/upki-mirror:latest
+          sudo skopeo --insecure-policy copy \
+            "oci-archive:$(realpath ./upki-mirror_*.rock)" \
+            "docker://ghcr.io/jnsgruk/upki-mirror:latest" \
+            --dest-creds "${{ github.actor }}:${{ secrets.GITHUB_TOKEN }}"
+
+      - name: Update charm metadata
+        run: |
+          version=${{ steps.get_version.outputs.VERSION }}
+          sed -i -e "s/upki-mirror:[0-9]\+\.[0-9]\+\.[0-9]\+/upki-mirror:${version}/g" charmcraft.yaml
+
+      # We use a Github App and token to allow Github Actions to run properly on the created PR.
+      - uses: tibdex/github-app-token@v2
+        id: generate-token
+        with:
+          app_id: ${{ secrets.APP_ID }}
+          private_key: ${{ secrets.APP_KEY }}
+
+      - name: Create a PR to update charm
+        uses: peter-evans/create-pull-request@v8
+        id: cpr
+        with:
+          token: ${{ steps.generate-token.outputs.token }}
+          commit-message: "chore(deps): bump upki-mirror container image to `upki-mirror:${{ steps.get_version.outputs.VERSION }}`"
+          committer: "Github Actions <github-actions@github.com>"
+          author: "Github Actions <github-actions@github.com>"
+          title: "chore(deps): bump container image to `upki-mirror:${{ steps.get_version.outputs.VERSION }}`"
+          body: "chore(deps): bump container image to `upki-mirror:${{ steps.get_version.outputs.VERSION }}`"
+          branch: "auto-container-${{ steps.get_version.outputs.VERSION }}"
+          delete-branch: true
+          reviewers: jnsgruk
+          assignees: jnsgruk
