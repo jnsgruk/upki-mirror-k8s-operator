@@ -25,11 +25,7 @@ def charm():
 @pytest.fixture
 def loaded_ctx(charm):
     ctx = Context(charm)
-    container = Container(
-        name="nginx",
-        can_connect=True,
-        execs={Exec(("/bin/upki-mirror", "/var/www/html"))},
-    )
+    container = Container(name="nginx", can_connect=True)
     return (ctx, container)
 
 
@@ -41,7 +37,19 @@ def test_nginx_pebble_ready(loaded_ctx):
 
     assert result.get_container("nginx").layers["nginx"] == {
         "services": {
+            "upki-mirror": {
+                "override": "replace",
+                "summary": "upki-mirror",
+                "command": "/bin/upki-mirror /var/www/html",
+                "startup": "enabled",
+                "on-success": "ignore",
+                "environment": {
+                    "HTTP_PROXY": "",
+                    "HTTPS_PROXY": "",
+                },
+            },
             "nginx": {
+                "after": ["upki-mirror"],
                 "override": "replace",
                 "summary": "nginx",
                 "command": "nginx -g 'daemon off;'",
@@ -72,30 +80,8 @@ def test_nginx_pebble_ready(loaded_ctx):
         },
     }
     assert result.get_container("nginx").service_statuses == {
+        "upki-mirror": ServiceStatus.ACTIVE,
         "nginx": ServiceStatus.ACTIVE,
     }
     assert result.opened_ports == frozenset({TCPPort(80)})
     assert result.unit_status == ActiveStatus()
-
-
-def test_nginx_pebble_ready_exec_error(charm):
-    ctx = Context(charm)
-    container = Container(
-        name="nginx",
-        can_connect=True,
-        execs={
-            Exec(
-                ("/bin/upki-mirror", "/var/www/html"),
-                return_code=1,
-                stderr="Failed to fetch mirror",
-            )
-        },
-    )
-    state = State(containers=[container])
-
-    result = ctx.run(ctx.on.pebble_ready(container=container), state)
-
-    assert "nginx" in result.get_container("nginx").layers
-    assert result.get_container("nginx").service_statuses == {}
-    assert result.opened_ports == frozenset()
-    assert result.unit_status == BlockedStatus("Initial mirror fetch failed")

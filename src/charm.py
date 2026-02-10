@@ -41,26 +41,31 @@ class UpkiMirrorCharm(ops.CharmBase):
     def _on_nginx_pebble_ready(self, event: ops.WorkloadEvent):
         """Define and start a workload using the Pebble API."""
         self._container.add_layer("nginx", self.pebble_layer(), combine=True)
-        try:
-            stdout, stderr = self._container.exec(
-                ["/bin/upki-mirror", "/var/www/html"]
-            ).wait_output()
-            logger.info("upki-mirror completed: %s", stdout)
-        except ops.pebble.ExecError as e:
-            logger.error("upki-mirror failed: %s", e.stderr)
-            self.unit.status = ops.BlockedStatus("Initial mirror fetch failed")
-            return
         self._container.replan()
-
         self.unit.open_port(protocol="tcp", port=80)
         self.unit.status = ops.ActiveStatus()
 
     def pebble_layer(self) -> ops.pebble.Layer:
         """Return a Pebble layer for managing UpkiMirror."""
+        proxy_env = {
+            "HTTP_PROXY": os.environ.get("JUJU_CHARM_HTTP_PROXY", ""),
+            "HTTPS_PROXY": os.environ.get("JUJU_CHARM_HTTPS_PROXY", ""),
+        }
         return ops.pebble.Layer(
             {
                 "services": {
+                    "upki-mirror": {
+                        "override": "replace",
+                        "summary": "upki-mirror",
+                        "command": "/bin/upki-mirror /var/www/html",
+                        "startup": "enabled",
+                        # We expect this process to run and exit with exit code 0, but
+                        # exiting should not be considered a failure.
+                        "on-success": "ignore",
+                        "environment": proxy_env,
+                    },
                     "nginx": {
+                        "after": ["upki-mirror"],
                         "override": "replace",
                         "summary": "nginx",
                         "command": "nginx -g 'daemon off;'",
@@ -81,10 +86,7 @@ class UpkiMirrorCharm(ops.CharmBase):
                         "period": "360m",
                         "exec": {
                             "command": "/bin/upki-mirror /var/www/html",
-                            "environment": {
-                                "HTTP_PROXY": os.environ.get("JUJU_CHARM_HTTP_PROXY", ""),
-                                "HTTPS_PROXY": os.environ.get("JUJU_CHARM_HTTPS_PROXY", ""),
-                            },
+                            "environment": proxy_env,
                         },
                         "startup": "enabled",
                     },
