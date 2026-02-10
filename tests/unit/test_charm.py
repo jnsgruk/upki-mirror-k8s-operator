@@ -6,15 +6,14 @@ import pytest
 from ops.pebble import ServiceStatus
 from ops.testing import (
     ActiveStatus,
-    BlockedStatus,
     Container,
     Context,
-    Exec,
     State,
     TCPPort,
 )
 
 from charm import UpkiMirrorCharm
+from pebble import pebble_layer
 
 
 @pytest.fixture
@@ -35,50 +34,7 @@ def test_nginx_pebble_ready(loaded_ctx):
 
     result = ctx.run(ctx.on.pebble_ready(container=container), state)
 
-    assert result.get_container("nginx").layers["nginx"] == {
-        "services": {
-            "upki-mirror": {
-                "override": "replace",
-                "summary": "upki-mirror",
-                "command": "/bin/upki-mirror /var/www/html",
-                "startup": "enabled",
-                "on-success": "ignore",
-                "environment": {
-                    "HTTP_PROXY": "",
-                    "HTTPS_PROXY": "",
-                },
-            },
-            "nginx": {
-                "after": ["upki-mirror"],
-                "override": "replace",
-                "summary": "nginx",
-                "command": "nginx -g 'daemon off;'",
-                "startup": "enabled",
-            },
-        },
-        "checks": {
-            "up": {
-                "override": "replace",
-                "level": "alive",
-                "period": "30s",
-                "tcp": {"port": 80},
-                "startup": "enabled",
-            },
-            "fetch": {
-                "override": "replace",
-                "level": "alive",
-                "period": "360m",
-                "exec": {
-                    "command": "/bin/upki-mirror /var/www/html",
-                    "environment": {
-                        "HTTP_PROXY": "",
-                        "HTTPS_PROXY": "",
-                    },
-                },
-                "startup": "enabled",
-            },
-        },
-    }
+    assert result.get_container("nginx").layers["nginx"] == pebble_layer()
     assert result.get_container("nginx").service_statuses == {
         "upki-mirror": ServiceStatus.ACTIVE,
         "nginx": ServiceStatus.ACTIVE,
