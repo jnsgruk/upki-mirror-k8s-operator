@@ -21,7 +21,10 @@ def pebble_layer() -> ops.pebble.Layer:
                 "upki-mirror": {
                     "override": "replace",
                     "summary": "upki-mirror",
-                    "command": "/bin/upki-mirror /var/www/html",
+                    # The sleep here is a bit of a hack, but prevents Pebble from thinking
+                    # that the service exited too quickly in the case that it downloads
+                    # files very fast.
+                    "command": "bash -c '/bin/upki-mirror /var/www/html; sleep 2'",
                     "startup": "enabled",
                     # We expect this process to run and exit with exit code 0, but
                     # exiting should not be considered a failure.
