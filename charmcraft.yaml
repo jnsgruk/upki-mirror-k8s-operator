@@ -42,7 +42,7 @@ resources:
     type: oci-image
     description: OCI image for nginx
     # Included for simplicity in integration tests
-    upstream-source: ghcr.io/jnsgruk/upki-mirror:0.1.0
+    upstream-source: ghcr.io/jnsgruk/upki-mirror:ca790753
 
 charm-libs:
   - lib: traefik_k8s.ingress
