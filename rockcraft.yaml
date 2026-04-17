@@ -27,7 +27,8 @@ parts:
     source-commit: $CRAFT_PROJECT_VERSION
     source-subdir: upki-mirror
     stage:
-      - bin/upki-mirror
+      - bin/intermediates
+      - bin/mozilla-crlite
 
   nginx:
     plugin: nil
