@@ -39,7 +39,7 @@ def test_ingress_functions_correctly(juju: jubilant.Juju, traefik_lb_ip):
     model_name = juju.model
     assert model_name is not None
 
-    req = Request(f"http://{traefik_lb_ip}/manifest.json")
+    req = Request(f"http://{traefik_lb_ip}/revocation/manifest.json")
     req.add_header("Host", f"{model_name}-{UPKI_MIRROR}.foo.bar")
 
     response = urlopen(req)

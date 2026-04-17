@@ -10,7 +10,7 @@ import ops
 
 
 def pebble_layer() -> ops.pebble.Layer:
-    """Return a Pebble layer for managing UpkiMirror."""
+    """Return a Pebble layer for managing upki mirroring."""
     proxy_env = {
         "HTTP_PROXY": os.environ.get("JUJU_CHARM_HTTP_PROXY", ""),
         "HTTPS_PROXY": os.environ.get("JUJU_CHARM_HTTPS_PROXY", ""),
@@ -18,13 +18,26 @@ def pebble_layer() -> ops.pebble.Layer:
     return ops.pebble.Layer(
         {
             "services": {
-                "upki-mirror": {
+                "mozilla-crlite": {
                     "override": "replace",
-                    "summary": "upki-mirror",
+                    "summary": "mozilla-crlite",
                     # The sleep here is a bit of a hack, but prevents Pebble from thinking
                     # that the service exited too quickly in the case that it downloads
                     # files very fast.
-                    "command": "bash -c '/bin/upki-mirror /var/www/html; sleep 2'",
+                    "command": "bash -c '/bin/mozilla-crlite /var/www/html/revocation; sleep 2'",
+                    "startup": "enabled",
+                    # We expect this process to run and exit with exit code 0, but
+                    # exiting should not be considered a failure.
+                    "on-success": "ignore",
+                    "environment": proxy_env,
+                },
+                "intermediates": {
+                    "override": "replace",
+                    "summary": "intermediates",
+                    # The sleep here is a bit of a hack, but prevents Pebble from thinking
+                    # that the service exited too quickly in the case that it downloads
+                    # files very fast.
+                    "command": "bash -c '/bin/intermediates /var/www/html/intermediates; sleep 2'",
                     "startup": "enabled",
                     # We expect this process to run and exit with exit code 0, but
                     # exiting should not be considered a failure.
@@ -32,7 +45,7 @@ def pebble_layer() -> ops.pebble.Layer:
                     "environment": proxy_env,
                 },
                 "nginx": {
-                    "after": ["upki-mirror"],
+                    "after": ["mozilla-crlite", "intermediates"],
                     "override": "replace",
                     "summary": "nginx",
                     "command": "nginx -g 'daemon off;'",
@@ -47,12 +60,22 @@ def pebble_layer() -> ops.pebble.Layer:
                     "tcp": {"port": 80},
                     "startup": "enabled",
                 },
-                "fetch": {
+                "fetch-mozilla-crlite": {
                     "override": "replace",
                     "level": "alive",
                     "period": "360m",
                     "exec": {
-                        "command": "/bin/upki-mirror /var/www/html",
+                        "command": "/bin/mozilla-crlite /var/www/html/revocation",
+                        "environment": proxy_env,
+                    },
+                    "startup": "enabled",
+                },
+                "fetch-intermediates": {
+                    "override": "replace",
+                    "level": "alive",
+                    "period": "360m",
+                    "exec": {
+                        "command": "/bin/intermediates /var/www/html/intermediates",
                         "environment": proxy_env,
                     },
                     "startup": "enabled",

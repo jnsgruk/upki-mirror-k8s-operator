@@ -18,15 +18,26 @@ def test_deploy(juju: jubilant.Juju, upki_mirror_charm, upki_mirror_oci_image):
 
 
 @retry(retry_num=10, retry_sleep_sec=3)
-def test_manifest_was_fetched(juju: jubilant.Juju):
+def test_revocation_manifest_was_fetched(juju: jubilant.Juju):
     output = juju.ssh(
-        f"{UPKI_MIRROR}/0", "ls -l /var/www/html/manifest.json", container="nginx"
+        f"{UPKI_MIRROR}/0", "ls -l /var/www/html/revocation/manifest.json", container="nginx"
     ).strip()
-    assert "/var/www/html/manifest.json" in output
+    assert "/var/www/html/revocation/manifest.json" in output
+
+
+@retry(retry_num=10, retry_sleep_sec=3)
+def test_intermediates_manifest_was_fetched(juju: jubilant.Juju):
+    output = juju.ssh(
+        f"{UPKI_MIRROR}/0", "ls -l /var/www/html/intermediates/manifest.json", container="nginx"
+    ).strip()
+    assert "/var/www/html/intermediates/manifest.json" in output
 
 
 @retry(retry_num=10, retry_sleep_sec=3)
 def test_application_is_up(juju: jubilant.Juju):
     address = juju.status().apps[UPKI_MIRROR].units[f"{UPKI_MIRROR}/0"].address
-    response = urlopen(f"http://{address}/manifest.json")
+    response = urlopen(f"http://{address}/revocation/manifest.json")
+    assert response.status == 200
+
+    response = urlopen(f"http://{address}/intermediates/manifest.json")
     assert response.status == 200

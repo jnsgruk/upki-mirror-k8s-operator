@@ -41,6 +41,8 @@ class UpkiMirrorCharm(ops.CharmBase):
 
     def _on_nginx_pebble_ready(self, event: ops.WorkloadEvent):
         """Define and start a workload using the Pebble API."""
+        self._container.make_dir("/var/www/html/revocation", make_parents=True)
+        self._container.make_dir("/var/www/html/intermediates", make_parents=True)
         self._container.add_layer("nginx", pebble_layer(), combine=True)
         self._container.replan()
         self.unit.open_port(protocol="tcp", port=80)

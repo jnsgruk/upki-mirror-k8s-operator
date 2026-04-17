@@ -36,7 +36,8 @@ def test_nginx_pebble_ready(loaded_ctx):
 
     assert result.get_container("nginx").layers["nginx"] == pebble_layer()
     assert result.get_container("nginx").service_statuses == {
-        "upki-mirror": ServiceStatus.ACTIVE,
+        "mozilla-crlite": ServiceStatus.ACTIVE,
+        "intermediates": ServiceStatus.ACTIVE,
         "nginx": ServiceStatus.ACTIVE,
     }
     assert result.opened_ports == frozenset({TCPPort(80)})
