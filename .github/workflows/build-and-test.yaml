@@ -2,6 +2,11 @@ name: Build/Test
 
 on:
   workflow_call:
+    inputs:
+      publish:
+        description: "Publish the ROCK to ghcr.io"
+        type: boolean
+        default: false
     secrets:
       CHARMHUB_TOKEN:
         required: true
@@ -29,23 +34,55 @@ jobs:
       - name: Run tests
         run: make unit
 
-  lib-check:
-    name: Check libraries
+
+  build-rock:
+    name: Build Rock
     runs-on: ubuntu-24.04
     steps:
       - name: Checkout
         uses: actions/checkout@v6
-        with:
-          fetch-depth: 0
-      - name: Check libs
-        uses: canonical/charming-actions/check-libraries@2.7.0
-        with:
-          credentials: "${{ secrets.CHARMHUB_TOKEN }}"
-          github-token: "${{ secrets.GITHUB_TOKEN }}"
+
+      - name: Setup LXD
+        uses: canonical/setup-lxd@v1
+
+      - name: Build ROCK
+        run: |
+          sudo snap install rockcraft --edge --classic
+          rockcraft pack --verbose
+
+      - name: Upload ROCK to ttl.sh
+        if: ${{ !inputs.publish }}
+        run: |
+          sudo skopeo --insecure-policy copy \
+            "oci-archive:$(realpath ./upki-mirror_*.rock)" \
+            "docker://ttl.sh/upki-mirror-${{ github.run_id }}:2h" \
+            --dest-creds "${{ github.actor }}:${{ secrets.GITHUB_TOKEN }}"
+
+      - name: Get version
+        if: ${{ inputs.publish }}
+        id: get_version
+        run: |
+          version="$(yq '.version' rockcraft.yaml)"
+          echo "VERSION=$version" >> "$GITHUB_OUTPUT"
+
+      - name: Publish ROCK to ghcr.io
+        if: ${{ inputs.publish }}
+        run: |
+          sudo skopeo --insecure-policy copy \
+            "oci-archive:$(realpath ./upki-mirror_*.rock)" \
+            "docker://ghcr.io/jnsgruk/upki-mirror:${{ steps.get_version.outputs.VERSION }}" \
+            --dest-creds "${{ github.actor }}:${{ secrets.GITHUB_TOKEN }}"
+
+          sudo skopeo --insecure-policy copy \
+            "oci-archive:$(realpath ./upki-mirror_*.rock)" \
+            "docker://ghcr.io/jnsgruk/upki-mirror:latest" \
+            --dest-creds "${{ github.actor }}:${{ secrets.GITHUB_TOKEN }}"
 
   pack-charm:
     name: Build charm
     runs-on: ubuntu-24.04
+    needs:
+      - build-rock
     steps:
       - name: Checkout
         uses: actions/checkout@v6
@@ -122,6 +159,11 @@ jobs:
 
       - name: Install charmcraft
         run: sudo snap install charmcraft --classic
+
+      - name: Configure test ROCK resource
+        if: ${{ !inputs.publish }}
+        run: |
+          yq -i '.resources.nginx-image.upstream-source = "ttl.sh/upki-mirror-${{ github.run_id }}:2h"' charmcraft.yaml
 
       - name: Run integration tests
         run: |

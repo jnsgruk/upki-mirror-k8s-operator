@@ -7,17 +7,26 @@ on:
     paths-ignore:
       - ".github/workflows/update-libs.yaml"
       - ".github/workflows/update-oci.yaml"
-      - ".github/workflows/publish-oci.yaml"
       - ".gitignore"
-      - "rockcraft.yaml"
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+permissions:
+  contents: write
+  pull-requests: write
+  packages: write
+
 jobs:
   test:
     uses: ./.github/workflows/build-and-test.yaml
+    permissions:
+      contents: write
+      pull-requests: write
+      packages: write
+    with:
+      publish: true
     secrets:
       CHARMHUB_TOKEN: "${{ secrets.CHARMHUB_TOKEN }}"
 
